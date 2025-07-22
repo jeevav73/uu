@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../awsdb');
 
+
 const router = express.Router();
 
 // Helper: Generate reset token
@@ -27,12 +28,16 @@ const sendResetEmail = async (email, token) => {
     // Only require nodemailer if email is configured
     const nodemailer = require('nodemailer');
     
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
+
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-      }
+      },
+      tls:{
+        rejectUnauthorized: false // Allow self-signed certificates
+      },
     });
     
     const mailOptions = {
@@ -311,3 +316,4 @@ router.post('/reset-password', async (req, res) => {
 });
 
 module.exports = router;
+// (Removed duplicate mailer code to fix redeclaration error)

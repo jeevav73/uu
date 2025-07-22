@@ -3,7 +3,9 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+
 const authRoutes = require('./routes/auth');
+const forgotPasswordRoute = require('./routes/forgotPassword'); // ✅ New Import
 
 const app = express();
 
@@ -13,7 +15,6 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -23,7 +24,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// API routes
 app.use('/api', authRoutes);
+app.use('/api', forgotPasswordRoute); // ✅ New Route Added
+
+const resetPasswordRoute = require('./routes/resetPassword');
+app.use('/api', resetPasswordRoute);
+
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -36,8 +43,20 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal server error' });
 });
 
+// Start the server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`📍 Health check: http://localhost:${PORT}/health`);
 });
+
+
+const nodemailer = require('nodemailer');
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PASSWORD
+  }
+});
+
