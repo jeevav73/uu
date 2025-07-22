@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const db = require('../awsdb');
 
 const router = express.Router();
@@ -8,11 +9,58 @@ const router = express.Router();
 // Helper: Generate reset token
 const generateResetToken = () => crypto.randomBytes(32).toString('hex');
 
-// Helper: Send reset email (Mock — replace with Nodemailer or AWS SES)
+// Helper: Create email transporter
+const createTransporter = () => {
+  return nodemailer.createTransporter({
+    service: 'gmail', // You can change this to other services
+    auth: {
+      user: process.env.EMAIL_USER, // Your email
+      pass: process.env.EMAIL_PASS  // Your app password
+    }
+  });
+};
+
+// Helper: Send reset email
 const sendResetEmail = async (email, token) => {
-  const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${token}`;
-  console.log(`Reset link for ${email}: ${resetLink}`);
-  return true;
+  try {
+    const transporter = createTransporter();
+    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${token}`;
+    
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Password Reset Request - QuestionPaper AI',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e293b;">Password Reset Request</h2>
+          <p>Hello,</p>
+          <p>You requested a password reset for your QuestionPaper AI account. Click the button below to reset your password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}" 
+               style="background-color: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Reset Password
+            </a>
+          </div>
+          <p>Or copy and paste this link in your browser:</p>
+          <p style="word-break: break-all; color: #3b82f6;">${resetLink}</p>
+          <p><strong>This link will expire in 1 hour.</strong></p>
+          <p>If you didn't request this password reset, please ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e2e8f0;">
+          <p style="color: #64748b; font-size: 14px;">
+            Best regards,<br>
+            QuestionPaper AI Team
+          </p>
+        </div>
+      `
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully:', result.messageId);
+    return true;
+  } catch (error) {
+    console.error('Email sending failed:', error);
+    throw error;
+  }
 };
 
 // 🔹 SIGNUP
