@@ -69,124 +69,245 @@ const sendResetEmail = async (email, token) => {
   } catch (error) {
     console.error('Email sending failed:', error.message);
     console.log('📧 Falling back to console output for development');
-    throw error;
+    // Fall back to console output
+    console.log('\n=== PASSWORD RESET LINK (Email Failed) ===');
+    console.log(`Email: ${email}`);
+    console.log(`Reset Link: ${resetLink}`);
+    console.log('========================================\n');
+    return true; // Still return success
   }
 };
 
 // 🔹 SIGNUP
 router.post('/signup', async (req, res) => {
-  const { name, email, password, phone } = req.body;
+  try {
+    const { name, email, password, phone } = req.body;
 
-  db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-    if (err) return res.status(500).json({ message: 'Server error' });
-    if (results.length > 0) return res.status(400).json({ message: 'Email already exists' });
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email, and password are required' });
+    }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = {
-      name,
-      email,
-      phone,
-      password_hash: passwordHash,
-      is_active: true,
-      role: 'user',
-    };
+    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+      if (err) {
+        console.error('Database error in signup:', err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+      
+      if (results.length > 0) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
 
-    db.query('INSERT INTO users SET ?', user, (err) => {
-      if (err) return res.status(500).json({ message: 'Database error' });
-      res.status(201).json({ message: 'User registered successfully' });
+      try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = {
+          name,
+          email,
+          phone: phone || null,
+          password_hash: passwordHash,
+          is_active: true,
+          role: 'user',
+        };
+
+        db.query('INSERT INTO users SET ?', user, (err) => {
+          if (err) {
+            console.error('Database error in user creation:', err);
+            return res.status(500).json({ message: 'Database error' });
+          }
+          res.status(201).json({ message: 'User registered successfully' });
+        });
+      } catch (hashError) {
+        console.error('Password hashing error:', hashError);
+        return res.status(500).json({ message: 'Server error' });
+      }
     });
-  });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // 🔹 LOGIN
 router.post('/login', (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-    if (err) return res.status(500).json({ message: 'Server error' });
-    if (results.length === 0) return res.status(400).json({ message: 'Invalid email or password' });
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
-    const user = results[0];
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid email or password' });
+    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+      if (err) {
+        console.error('Database error in login:', err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+      
+      if (results.length === 0) {
+        return res.status(400).json({ message: 'Invalid email or password' });
+      }
 
-    res.json({ message: 'Login successful', user: { id: user.id, name: user.name, role: user.role } });
-  });
+      try {
+        const user = results[0];
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
+          return res.status(400).json({ message: 'Invalid email or password' });
+        }
+
+        res.json({ 
+          message: 'Login successful', 
+          user: { 
+            id: user.id, 
+            name: user.name, 
+            email: user.email,
+            role: user.role 
+          } 
+        });
+      } catch (compareError) {
+        console.error('Password comparison error:', compareError);
+        return res.status(500).json({ message: 'Server error' });
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // 🔹 FORGOT PASSWORD
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ message: 'Email is required' });
-
-  db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-    if (err) return res.status(500).json({ message: 'Server error' });
-
-    // Always return success message for security (prevent email enumeration)
-    const successMessage = 'If an account with that email exists, a reset link has been sent.';
+  try {
+    const { email } = req.body;
     
-    if (results.length === 0) {
-      return res.json({ message: successMessage });
+    console.log('Forgot password request for email:', email);
+    
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
     }
 
-    const user = results[0];
-    const resetToken = generateResetToken();
-    const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
 
-    db.query(
-      'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
-      [resetToken, resetTokenExpires, user.id],
-      async (updateErr) => {
-        if (updateErr) {
-          console.error('Database update error:', updateErr);
-          return res.status(500).json({ message: 'Server error' });
-        }
-
-        try {
-          await sendResetEmail(email, resetToken);
-          res.json({ message: successMessage });
-        } catch (emailErr) {
-          console.error('Email error:', emailErr.message);
-          // Still return success but log the reset link for development
-          const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
-          console.log('\n=== PASSWORD RESET LINK (Email Failed) ===');
-          console.log(`Email: ${email}`);
-          console.log(`Reset Link: ${resetLink}`);
-          console.log('========================================\n');
-          res.json({ message: successMessage });
-        }
+    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+      if (err) {
+        console.error('Database error in forgot password:', err);
+        return res.status(500).json({ message: 'Server error' });
       }
-    );
-  });
+
+      // Always return success message for security (prevent email enumeration)
+      const successMessage = 'If an account with that email exists, a reset link has been sent.';
+      
+      if (results.length === 0) {
+        console.log('Email not found in database:', email);
+        return res.json({ message: successMessage });
+      }
+
+      try {
+        const user = results[0];
+        const resetToken = generateResetToken();
+        const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        console.log('Generated reset token for user:', user.id);
+
+        db.query(
+          'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+          [resetToken, resetTokenExpires, user.id],
+          async (updateErr) => {
+            if (updateErr) {
+              console.error('Database update error:', updateErr);
+              return res.status(500).json({ message: 'Server error' });
+            }
+
+            console.log('Reset token saved to database');
+
+            try {
+              await sendResetEmail(email, resetToken);
+              console.log('Reset email process completed');
+              res.json({ message: successMessage });
+            } catch (emailErr) {
+              console.error('Email error:', emailErr.message);
+              // Still return success but log the reset link for development
+              const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
+              console.log('\n=== PASSWORD RESET LINK (Email Failed) ===');
+              console.log(`Email: ${email}`);
+              console.log(`Reset Link: ${resetLink}`);
+              console.log('========================================\n');
+              res.json({ message: successMessage });
+            }
+          }
+        );
+      } catch (tokenError) {
+        console.error('Token generation error:', tokenError);
+        return res.status(500).json({ message: 'Server error' });
+      }
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // 🔹 RESET PASSWORD
 router.post('/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body;
+  try {
+    const { token, newPassword } = req.body;
 
-  if (!token || !newPassword) return res.status(400).json({ message: 'Token and password required' });
-  if (newPassword.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    console.log('Reset password request with token:', token ? 'provided' : 'missing');
 
-  db.query(
-    'SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > NOW()',
-    [token],
-    async (err, results) => {
-      if (err) return res.status(500).json({ message: 'Server error' });
-      if (results.length === 0) return res.status(400).json({ message: 'Invalid or expired token' });
-
-      const user = results[0];
-      const passwordHash = await bcrypt.hash(newPassword, 10);
-
-      db.query(
-        'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
-        [passwordHash, user.id],
-        (updateErr) => {
-          if (updateErr) return res.status(500).json({ message: 'Server error' });
-          res.json({ message: 'Password reset successfully' });
-        }
-      );
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Token and password required' });
     }
-  );
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    db.query(
+      'SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > NOW()',
+      [token],
+      async (err, results) => {
+        if (err) {
+          console.error('Database error in reset password:', err);
+          return res.status(500).json({ message: 'Server error' });
+        }
+        
+        if (results.length === 0) {
+          console.log('Invalid or expired token');
+          return res.status(400).json({ message: 'Invalid or expired token' });
+        }
+
+        try {
+          const user = results[0];
+          const passwordHash = await bcrypt.hash(newPassword, 10);
+
+          console.log('Updating password for user:', user.id);
+
+          db.query(
+            'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+            [passwordHash, user.id],
+            (updateErr) => {
+              if (updateErr) {
+                console.error('Database update error in reset password:', updateErr);
+                return res.status(500).json({ message: 'Server error' });
+              }
+              
+              console.log('Password reset successfully for user:', user.id);
+              res.json({ message: 'Password reset successfully' });
+            }
+          );
+        } catch (hashError) {
+          console.error('Password hashing error in reset:', hashError);
+          return res.status(500).json({ message: 'Server error' });
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 module.exports = router;
