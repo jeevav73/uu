@@ -1,7 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const db = require('../awsdb');
 
 const router = express.Router();
@@ -9,22 +8,32 @@ const router = express.Router();
 // Helper: Generate reset token
 const generateResetToken = () => crypto.randomBytes(32).toString('hex');
 
-// Helper: Create email transporter
-const createTransporter = () => {
-  return nodemailer.createTransporter({
-    service: 'gmail', // You can change this to other services
-    auth: {
-      user: process.env.EMAIL_USER, // Your email
-      pass: process.env.EMAIL_PASS  // Your app password
-    }
-  });
-};
-
-// Helper: Send reset email
+// Helper: Send reset email (with fallback for development)
 const sendResetEmail = async (email, token) => {
+  const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${token}`;
+  
+  // Check if email is configured
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.log('\n=== PASSWORD RESET LINK ===');
+    console.log(`Email: ${email}`);
+    console.log(`Reset Link: ${resetLink}`);
+    console.log('=========================\n');
+    console.log('⚠️  Email not configured. Using console output for development.');
+    console.log('📧 To enable email sending, configure EMAIL_USER and EMAIL_PASS in .env file');
+    return true; // Return success for development
+  }
+
   try {
-    const transporter = createTransporter();
-    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${token}`;
+    // Only require nodemailer if email is configured
+    const nodemailer = require('nodemailer');
+    
+    const transporter = nodemailer.createTransporter({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -58,7 +67,8 @@ const sendResetEmail = async (email, token) => {
     console.log('Email sent successfully:', result.messageId);
     return true;
   } catch (error) {
-    console.error('Email sending failed:', error);
+    console.error('Email sending failed:', error.message);
+    console.log('📧 Falling back to console output for development');
     throw error;
   }
 };
@@ -112,8 +122,11 @@ router.post('/forgot-password', async (req, res) => {
   db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
     if (err) return res.status(500).json({ message: 'Server error' });
 
+    // Always return success message for security (prevent email enumeration)
+    const successMessage = 'If an account with that email exists, a reset link has been sent.';
+    
     if (results.length === 0) {
-      return res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+      return res.json({ message: successMessage });
     }
 
     const user = results[0];
@@ -124,13 +137,23 @@ router.post('/forgot-password', async (req, res) => {
       'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
       [resetToken, resetTokenExpires, user.id],
       async (updateErr) => {
-        if (updateErr) return res.status(500).json({ message: 'Server error' });
+        if (updateErr) {
+          console.error('Database update error:', updateErr);
+          return res.status(500).json({ message: 'Server error' });
+        }
 
         try {
           await sendResetEmail(email, resetToken);
-          res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+          res.json({ message: successMessage });
         } catch (emailErr) {
-          res.status(500).json({ message: 'Failed to send reset email' });
+          console.error('Email error:', emailErr.message);
+          // Still return success but log the reset link for development
+          const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
+          console.log('\n=== PASSWORD RESET LINK (Email Failed) ===');
+          console.log(`Email: ${email}`);
+          console.log(`Reset Link: ${resetLink}`);
+          console.log('========================================\n');
+          res.json({ message: successMessage });
         }
       }
     );
