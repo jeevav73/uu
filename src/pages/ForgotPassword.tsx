@@ -12,7 +12,7 @@ const ForgotPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
@@ -24,7 +24,7 @@ const ForgotPassword = () => {
       });
 
       const data = await res.json();
-      
+
       if (res.ok) {
         setIsSubmitted(true);
         toast.success("Password reset instructions sent to your email");
@@ -49,7 +49,7 @@ const ForgotPassword = () => {
               <span className="text-xl font-semibold">QuestionPaper AI</span>
             </Link>
           </div>
-          
+
           <Card>
             <CardHeader className="text-center">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -65,11 +65,7 @@ const ForgotPassword = () => {
                 Didn't receive the email? Check your spam folder or try again.
               </p>
               <div className="flex flex-col space-y-2">
-                <Button 
-                  onClick={() => setIsSubmitted(false)}
-                  variant="outline"
-                  className="w-full"
-                >
+                <Button onClick={() => setIsSubmitted(false)} variant="outline" className="w-full">
                   Try Different Email
                 </Button>
                 <Link to="/login">
@@ -94,7 +90,7 @@ const ForgotPassword = () => {
             <span className="text-xl font-semibold">QuestionPaper AI</span>
           </Link>
         </div>
-        
+
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Forgot Password?</CardTitle>
@@ -115,20 +111,13 @@ const ForgotPassword = () => {
                   required
                 />
               </div>
-              <Button 
-                type="submit" 
-                className="w-full bg-slate-900 hover:bg-slate-800"
-                disabled={isLoading}
-              >
+              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800" disabled={isLoading}>
                 {isLoading ? "Sending..." : "Send Reset Link"}
               </Button>
             </form>
-            
+
             <div className="mt-6 text-center">
-              <Link 
-                to="/login" 
-                className="inline-flex items-center space-x-2 text-slate-600 hover:text-slate-900 text-sm"
-              >
+              <Link to="/login" className="inline-flex items-center space-x-2 text-slate-600 hover:text-slate-900 text-sm">
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back to Sign In</span>
               </Link>
